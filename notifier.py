@@ -1,5 +1,5 @@
 """
-Roblox Limited Price Notifier - Updated
+Roblox Limited Price Notifier
 """
 
 import time
@@ -12,13 +12,13 @@ from typing import Dict, Tuple, Optional
 WEBHOOK_URL = "https://discord.com/api/webhooks/1537206323429769247/DDanKqiYTeAUDMQjOt0UvDCV5UD4lEjtnrCGs9OtXJtqsuZn8YkMObq6xug12KK0J7pl"
 
 ITEMS: Dict[int, Tuple[int, int]] = {
-    # Original items
+    # Original
     9255011:     (3500, 4300),   # Antlers Silver Lim
     10159617728: (5000, 6000),   # 8 Bit Tabby Cat
     1082932:     (1500, 2500),   # Traffic Cone
     14463095:    (4000, 5000),   # Pinstripe Fedora
 
-    # New items
+    # New
     1609390589:  (2000, 3000),   # Blue Traffic Cone
     16477149823: (4500, 5675),   # Golden Clockwork Headphones
     1609402609:  (1000, 1100),   # Black Iron Branches
@@ -54,7 +54,7 @@ def get_item_info(asset_id: int) -> Optional[dict]:
         name = data.get("name", f"Asset {asset_id}")
 
         if lowest is None:
-            print(f"[{asset_id}] {name} → No price data")
+            print(f"  ❌ {asset_id} | {name} → No price data returned")
             return None
 
         return {
@@ -64,7 +64,7 @@ def get_item_info(asset_id: int) -> Optional[dict]:
             "url": f"https://www.roblox.com/catalog/{asset_id}/",
         }
     except Exception as e:
-        print(f"[{asset_id}] Error: {e}")
+        print(f"  ❌ {asset_id} | Error: {e}")
         return None
 
 def send_webhook(content: str = None, embeds: list = None):
@@ -76,22 +76,20 @@ def send_webhook(content: str = None, embeds: list = None):
 
     try:
         r = session.post(WEBHOOK_URL, json=payload, timeout=10)
-        if r.status_code not in (200, 204):
-            print(f"❌ Webhook error {r.status_code}: {r.text}")
-        return r.status_code in (200, 204)
+        if r.status_code in (200, 204):
+            return True
+        print(f"❌ Webhook failed ({r.status_code}): {r.text}")
+        return False
     except Exception as e:
-        print(f"❌ Failed to send webhook: {e}")
+        print(f"❌ Webhook exception: {e}")
         return False
 
 def send_startup():
-    embed = {
-        "title": "🟢 Notifier Started",
-        "description": f"Monitoring **{len(ITEMS)}** limiteds.\nUptime messages every 45 minutes.",
-        "color": 0x57F287,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    send_webhook(embeds=[embed])
-    print("✅ Startup message sent")
+    success = send_webhook(content="**monitor started**")
+    if success:
+        print("✅ Webhook confirmed working — 'monitor started' sent")
+    else:
+        print("❌ Webhook failed on startup")
 
 def send_alert(info: dict, min_price: int, max_price: int):
     embed = {
@@ -106,7 +104,7 @@ def send_alert(info: dict, min_price: int, max_price: int):
         "footer": {"text": "Roblox Limited Notifier"},
     }
     send_webhook(content="@everyone **DEAL FOUND!**", embeds=[embed])
-    print(f"✅ ALERT → {info['name']} @ {info['lowest']}")
+    print(f"🚨 ALERT SENT → {info['name']} @ {info['lowest']}")
 
 def send_uptime():
     uptime_seconds = int(time.time() - start_time)
@@ -123,7 +121,7 @@ def send_uptime():
     print("📡 Uptime message sent")
 
 def send_price_report():
-    print("📊 Generating price report...")
+    print("\n📊 Generating full price report...")
     lines = []
     for asset_id, (min_p, max_p) in ITEMS.items():
         info = get_item_info(asset_id)
@@ -132,22 +130,38 @@ def send_price_report():
             lines.append(f"**{info['name']}**: `{info['lowest']:,}` (want {min_p:,}–{max_p:,}) {status}")
         else:
             lines.append(f"**ID {asset_id}**: No data")
-        time.sleep(1.0)
+        time.sleep(0.8)
 
     embed = {
         "title": "📈 Current Limited Prices",
-        "description": "\n".join(lines) if lines else "No data available",
+        "description": "\n".join(lines),
         "color": 0x5865F2,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     send_webhook(embeds=[embed])
-    print("📊 Price report sent")
+    print("📊 Price report sent\n")
 
 def main():
     global last_uptime, next_price_report
 
-    print("🚀 Starting notifier...")
+    print("=" * 50)
+    print("🚀 STARTING NOTIFIER")
+    print("=" * 50)
+
+    # 1. Test webhook immediately
     send_startup()
+
+    # 2. Force check every single item at startup
+    print("\n🔍 Checking all items at startup:")
+    for asset_id, (min_p, max_p) in ITEMS.items():
+        info = get_item_info(asset_id)
+        if info:
+            in_range = min_p <= info["lowest"] <= max_p
+            status = "← IN RANGE!" if in_range else ""
+            print(f"  ✅ {info['name']}: {info['lowest']:,} Robux (want {min_p:,}–{max_p:,}) {status}")
+        time.sleep(0.7)
+
+    print("\n✅ Startup checks complete. Entering main loop...\n")
 
     while True:
         now = time.time()
@@ -162,7 +176,8 @@ def main():
             send_price_report()
             next_price_report = now + random.randint(PRICE_REPORT_MIN, PRICE_REPORT_MAX)
 
-        # Main checks
+        # Main price checks
+        print(f"--- Checking prices @ {datetime.now().strftime('%H:%M:%S')} ---")
         for asset_id, (min_p, max_p) in ITEMS.items():
             info = get_item_info(asset_id)
             if not info:
@@ -177,13 +192,13 @@ def main():
                     last_alerted[asset_id] = now
                 else:
                     remaining = int(ALERT_COOLDOWN - (now - last))
-                    print(f"[{info['name']}] In range but cooldown ({remaining}s)")
+                    print(f"  ⏳ {info['name']} in range but cooldown ({remaining}s left)")
             else:
-                print(f"[{info['name']}] {lowest:,}  (want {min_p:,}–{max_p:,})")
+                print(f"  • {info['name']}: {lowest:,} (want {min_p:,}–{max_p:,})")
 
-            time.sleep(1.1)
+            time.sleep(1.0)
 
-        print(f"--- Cycle done ---\n")
+        print(f"--- Cycle finished, sleeping {CHECK_INTERVAL}s ---\n")
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
